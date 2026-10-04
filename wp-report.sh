@@ -2,17 +2,46 @@
 # wp-report.sh - monthly WordPress update report using WP-CLI
 #
 # Usage:
-#   wp-report.sh snapshot   Save the current versions as the baseline
-#   wp-report.sh report     Compare the baseline with now (changes nothing)
-#   wp-report.sh rollover   Report on last month, save it, start a new baseline
-#                           (run this one from cron on the 1st of each month)
+#   wp-report.sh [-c site.env] snapshot   Save the current versions as the baseline
+#   wp-report.sh [-c site.env] report     Compare the baseline with now (changes nothing)
+#   wp-report.sh [-c site.env] rollover   Report on last month, save it, start a new
+#                                         baseline (run from cron on the 1st of each month)
+#
+# Site settings (WP_PATH, REPORT_DIR) come from the config file given with -c.
+# Without -c, they are read from the environment, or from wp-report.env next to
+# this script. See wp-report.env.example.
 
 set -euo pipefail
 
-# --- Settings: change WP_PATH to your site ----------------------------------
-WP_PATH="$HOME/www/example.com/public_html"
-REPORT_DIR="$HOME/wp-reports"
-# -----------------------------------------------------------------------------
+usage() {
+  echo "Usage: $0 [-c config.env] {snapshot|report|rollover}" >&2
+  exit 1
+}
+
+CONFIG=""
+while getopts "c:" opt; do
+  case "$opt" in
+    c) CONFIG="$OPTARG" ;;
+    *) usage ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+if [ -z "$CONFIG" ] && [ -z "${WP_PATH:-}" ] && [ -f "$(dirname "$0")/wp-report.env" ]; then
+  CONFIG="$(dirname "$0")/wp-report.env"
+fi
+
+if [ -n "$CONFIG" ]; then
+  if [ ! -f "$CONFIG" ]; then
+    echo "Config file not found: $CONFIG" >&2
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  . "$CONFIG"
+fi
+
+: "${WP_PATH:?WP_PATH is not set (use -c config.env or export it)}"
+: "${REPORT_DIR:?REPORT_DIR is not set (use a separate one per site)}"
 
 export PATH="$PATH:/usr/local/bin:/usr/bin"
 WP="wp --path=$WP_PATH --skip-plugins --skip-themes"
@@ -98,7 +127,6 @@ case "${1:-report}" in
     cat "$REPORT"
     ;;
   *)
-    echo "Usage: $0 {snapshot|report|rollover}" >&2
-    exit 1
+    usage
     ;;
 esac
